@@ -2,6 +2,10 @@ import requests, json, re, time
 from datetime import datetime, timedelta, timezone
 from bs4 import BeautifulSoup
 from random import randint
+import pytz
+
+# Define Paris timezone globally
+paris_tz = pytz.timezone('Europe/Paris')
 
 def load_config():
     with open('config.json') as config_file:
@@ -14,7 +18,6 @@ def save_config(config):
 config = load_config()
 discord_token = config['discord_token']
 session_id = config['session_id']
-redeem_token = config['redeem_token']
 
 minestrator_session = requests.Session()
 minestrator_session.cookies.set('PHPSESSID', session_id)
@@ -30,7 +33,9 @@ def log_message(message, level="info"):
         "error": "31",     # Red
     }
     color = colors.get(level, "36")  # Default to Cyan for info
-    print(f"{color_text(f'[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]', color)} {message}")
+    # Use Paris timezone in logs
+    colored = color_text(f'[{datetime.now(paris_tz).strftime("%Y-%m-%d %H:%M:%S %Z%z")}]', color)
+    print(f"{colored} {message}")
 
 def update_session_id(response):
     global session_id
@@ -70,10 +75,12 @@ def getLastCodes():
         discord_response = minestrator_session.get(discord_url, headers=discord_headers, data=discord_payload)
         messages = discord_response.json()
 
-        time_limit = datetime.now(timezone.utc) - timedelta(hours=1)
+        # Set the time limit using Paris timezone
+        time_limit = datetime.now(paris_tz) - timedelta(hours=1)
 
         def parse_timestamp(timestamp):
-            return datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+            utc_time = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+            return utc_time.astimezone(paris_tz)
 
         code_pattern = r'\|\|([A-Z0-9\-]+)\|\|'
 
@@ -118,13 +125,15 @@ def getAirDropTime():
             # Re-fetch airdrop time if session ID has changed
             airdrop_response = requests.get(airdrop_url, headers=headers)
 
+        global soup 
         soup = BeautifulSoup(airdrop_response.text, 'html.parser')
         spans = soup.find_all('span', class_='font-size-30')
 
         if len(spans) >= 2:
             date_format = "%d/%m/%Y à %H:%M"
             dt = datetime.strptime(spans[1].text, date_format)
-            log_message(f"Next airdrop is scheduled for {dt.strftime('%Y-%m-%d %H:%M:%S')}.", "success")
+            dt = paris_tz.localize(dt)  # Localize the datetime to Paris timezone
+            log_message(f"Next airdrop is scheduled for {dt.strftime('%Y-%m-%d %H:%M:%S %Z%z')}.", "success")
             return dt.timestamp()
         else:
             log_message("Failed to find the airdrop time on the page.", "warning")
@@ -132,10 +141,12 @@ def getAirDropTime():
 
     except Exception as e:
         log_message(f"Error fetching airdrop time: {e}", "error")
+        time.sleep(1)
         return False
 
 def redeemCodes():
     codes = getLastCodes()
+    redeem_token = soup.find('input', {'name': 'token'}).get('value')
     redeem_url = "https://minestrator.com/panel/action.php?action=codecadeau"
     headers = {
         'Cookie': f'PHPSESSID={session_id}',
@@ -170,7 +181,7 @@ def main():
     airdrop_time = getAirDropTime()
     
     while airdrop_time:
-        current_time = int(time.time())
+        current_time = int(datetime.now(paris_tz).timestamp())  # Use Paris time for current time
         sleep_time = airdrop_time - current_time
         
         if sleep_time > 1800:
@@ -178,7 +189,7 @@ def main():
             time.sleep(1800)
         else:
             log_message(f"Sleeping for {sleep_time} seconds until airdrop time.", "info")
-            time.sleep(sleep_time)
+            time.sleep(sleep_time+5)
             log_message("Airdrop is happening now!", "warning")
             redeemCodes()
 
