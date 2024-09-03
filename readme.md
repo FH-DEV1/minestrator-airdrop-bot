@@ -1,5 +1,5 @@
 # Minestrator Airdrop Bot
-
+This is a POC for educational purposes only !!! do not use without appropriate permissions. I do not take responability over anything done with this program.
 This Python script automates the process of fetching and redeeming codes from the Minestrator airdrop events. The bot continuously monitors the next airdrop time, retrieves codes from a specified Discord channel, and attempts to redeem them on the Minestrator website.
 
 ## Features
